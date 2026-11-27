@@ -1,118 +1,60 @@
-# Kong Docker deployment with docker-compose
----
+# Kong Gateway with Docker Compose
 
-Kong API Gateway deployment with docker and docker-compose
-
-
-## Status
-
-This deployment is production ready.
-
-## Change default value
-
-Copy `default.env` to `.env`
-
-```
-cp default.env .env
-```
-
-then edit the `.env` file to change default values.
-
-
-| Variable name | Default value |
-|---------------|---------------|
-| `POSTGRES_VERSION`    | 13-alpine |
-| `POSTGRES_USER`       | kong |
-| `POSTGRES_PASSWORD`   | kong |
-| `POSTGRES_DB`         | kong |
-| `KONG_VERSION`        | 2.2 |
-| `KONG_ADMIN_LISTEN`   | 0.0.0.0:8001 |
-| `KONG_PROXY_LISTEN`   | 0.0.0.0:8000, 0.0.0.0:8443 ssl http2 |
-| `KONG_NGINX_HTTP_RESOLVER` | 8.8.8.8 |
-| `KONG_PG_HOST`        | kong-database |
-| `KONG_PG_USER`        | kong == `env POSTGRES_USER` |
-| `KONG_PG_PASSWORD`    | kong == `env POSTGRES_PASSWORD`|
-| `KONG_PG_DATABASE`    | kong == `env POSTGRES_DB`   |
-
+Run a self-managed Kong Gateway Enterprise 3.16.0.3 instance with PostgreSQL and Kong Manager. The Kong image tag and database bootstrap sequence follow the [official Docker Compose guide](https://developer.konghq.com/gateway/install/docker/).
 
 ## Quick start
 
-```
-time ./quick-start.sh
-```
+For a new installation, install Docker with the Docker Compose v2 plugin, then run:
 
-## Deploy Kong step by step
-
-### Deploy kong-database
-
-```
-docker-compose up -d kong-database
+```sh
+cp default.env .env
+./quick-start.sh
 ```
 
-### Run kong-database migrations
+Set `POSTGRES_PASSWORD` in `.env` before starting a shared deployment. To enable configuration changes through the Admin API and Kong Manager, export a valid Enterprise license before starting:
 
-```
-docker-compose run --rm kong kong migrations bootstrap --vv
-```
-
-### Start Kong
-
-```
-docker-compose up -d kong
+```sh
+export KONG_LICENSE_DATA="$(cat /path/to/license.json)"
+./quick-start.sh
 ```
 
-**Now Kong is running**
+Without a license, Kong Gateway Enterprise 3.15 and later allow read-only access to Gateway entities through the Admin API. See the [3.15 release notes](https://developer.konghq.com/gateway/changelog/#31500) and [license documentation](https://developer.konghq.com/gateway/entities/license/).
 
-- Kong Admin API http://127.0.0.1:8001
-- Kong Proxy http://127.0.0.1
+Compose waits for PostgreSQL, initializes the Kong schema, and starts the Gateway after the bootstrap job succeeds. You can also use `docker compose up -d` directly.
 
-### Start Konga
+| Endpoint | Default address | Host port setting |
+| --- | --- | --- |
+| Proxy HTTP | `http://127.0.0.1` | `KONG_PROXY_HTTP_PORT` |
+| Proxy HTTPS | `https://127.0.0.1` | `KONG_PROXY_HTTPS_PORT` |
+| Admin API | `http://127.0.0.1:8001` | `KONG_ADMIN_PORT` |
+| Kong Manager | `http://127.0.0.1:8002` | `KONG_MANAGER_PORT` |
 
-```
-docker-compose up -d konga
-```
+Check the Admin API with `curl --fail http://127.0.0.1:8001/`. Use `docker compose ps -a` and `docker compose logs kong-database kong-bootstrap kong` to troubleshoot startup.
 
-**Now Konga is running**
+The proxy is published on host ports 80 and 443. PostgreSQL stays on the Compose network, and the Admin API and Kong Manager bind to loopback. To reach both admin interfaces on a remote host with the default ports, use an SSH tunnel:
 
-- Konga http://127.0.0.1:1337
-
-### Acccess Konga securely
-
-If you deploy Kong on a remote host we can access Konga via ssh tunnel
-
-```
-ssh -L 1337:127.0.0.1:1337 username@kong.example.com
+```sh
+ssh -N -L 8001:127.0.0.1:8001 -L 8002:127.0.0.1:8002 user@kong.example.com
 ```
 
-Now you can access konga on [localhost](http://localhost:1337)
+For shared deployments, see Kong's guides to [securing the Admin API](https://developer.konghq.com/gateway/secure-the-admin-api/) and [setting up Kong Manager authentication](https://developer.konghq.com/gateway/kong-manager/configuration/#enable-authentication).
 
+## Configuration and data
 
-### Upgrading Kong version
+- `KONG_VERSION` selects the tag for both the Gateway and its bootstrap job.
+- `POSTGRES_VERSION` defaults to `17-alpine`. PostgreSQL 17 is [supported by Kong Gateway 3.16](https://developer.konghq.com/gateway/third-party-support/) and retains the existing `/var/lib/postgresql/data` mount. PostgreSQL 18 uses a different default [volume layout](https://hub.docker.com/_/postgres).
+- `POSTGRES_USER`, `POSTGRES_DB`, and `POSTGRES_PASSWORD` configure both PostgreSQL and Kong's connection. Set `KONG_PG_HOST` to override the database host.
+- Set `KONG_TRUSTED_IPS` to the IPs or CIDRs of trusted reverse proxies if Kong receives forwarded client IP headers.
 
-> **WARNING** : This may take some downtime to start a new Kong version.
+`docker compose down` stops the stack. The PostgreSQL files stay in `./pg_data`.
 
-1. Change `KONG_VERSION` in `.env` file to a newer version.
+## Upgrading an existing installation
 
-	> If running kong version 2.2 change to 2.3 (or 2.3.0). [Suggested upgrade path](https://github.com/Kong/kong/blob/master/UPGRADE.md)
+1. Keep a copy of the existing Compose configuration and `.env`. Identify the Kong edition and version, PostgreSQL major version, and database credentials in use. Back up PostgreSQL and the Gateway configuration. [Kong backup and restore guide](https://developer.konghq.com/gateway/upgrade/backup-and-restore/)
+2. If you used the old `kong:<tag>` OSS image, follow Kong's OSS-to-Enterprise migration at a matching version first. Then use the supported Kong Gateway upgrade path, including any intermediate releases and schema migrations. The bootstrap job is for fresh databases. [OSS-to-Enterprise migration](https://developer.konghq.com/gateway/upgrade/migrate-oss-to-ee/) · [Kong Gateway upgrade guide](https://developer.konghq.com/gateway/upgrade/)
+3. Check PostgreSQL compatibility at each Kong upgrade step. Keep the PostgreSQL image on the major version of the data in `./pg_data` until you migrate PostgreSQL itself. For example, moving from PostgreSQL 13 to 17 requires a major-version upgrade. [PostgreSQL major upgrade guide](https://www.postgresql.org/docs/17/upgrading.html)
+4. After the schema migrations, set `KONG_VERSION=3.16.0.3` in your existing `.env` before starting this stack. Keep your database credentials and select the `POSTGRES_VERSION` that matches the migrated data.
 
-2. Run migrations upgrade
+Kong Manager replaces Konga. After you verify the migrated configuration and retire the old Konga container, open Kong Manager on port 8002.
 
-	```
-	docker-compose run --rm kong kong migrations up --vv
-	```
-
-3. Confirm finish migrations upgrade
-
-	```
-	docker-compose run --rm kong kong migrations finish --vv
-	```
-	
-4. Start new Kong version
-
-	```
-	docker-compose up -d kong
-	```
-
-### Postman Admin API
-[Kong CE Admin API V2.0](https://documenter.getpostman.com/view/10587735/SzS7QS2c?version=latest#b5c37285-0e71-411a-b44d-f06fea8e6b24)
-
+See the [Admin API reference](https://developer.konghq.com/admin-api/) for current endpoints and examples.
