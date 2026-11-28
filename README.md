@@ -42,6 +42,30 @@ The proxy publishes ports 80 and 443 on the host. PostgreSQL stays inside the Co
 
 If startup fails, check `docker compose ps -a` and `docker compose logs kong-database kong-bootstrap kong`.
 
+## Optional Konga dashboard
+
+Start the Konga profile alongside Kong Manager.
+
+```sh
+docker compose --profile konga up -d --wait
+```
+
+1. Open [Konga](http://127.0.0.1:1337), create the initial admin account, and sign in.
+2. Add a connection with type **Default**, name it `kong`, and use `http://kong:8001` as the **Kong Admin URL**.
+3. Save and activate the connection.
+
+Konga listens on loopback. If port 1337 is in use, set `KONGA_PORT=11337` in `.env` and open `http://127.0.0.1:11337`. The Kong Admin URL inside Konga stays `http://kong:8001`. For remote access with the default port, forward it over SSH.
+
+```sh
+ssh -N -L 1337:127.0.0.1:1337 user@kong.example.com
+```
+
+The `konga_data` Docker volume keeps the Konga account, connections, and generated session signing secret between restarts. The image is published for Linux AMD64, so ARM hosts need AMD64 emulation. [Konga image tags](https://hub.docker.com/r/pantsel/konga/tags)
+
+Run `docker compose --profile konga down` to stop the stack including Konga, or `docker compose stop konga` to stop Konga alone.
+
+Konga is archived and documents compatibility with Kong 1.x. Keep this profile for local development and use Kong Manager for features that Konga cannot manage on Kong 3.9. [Konga compatibility](https://github.com/pantsel/konga#compatibility)
+
 ## Configuration and data
 
 - `KONG_CE_VERSION` selects the `kong` image tag for both the Gateway and its bootstrap job. This replaces the previous Enterprise setting `KONG_VERSION`.
@@ -57,7 +81,5 @@ Keep a copy of your existing Compose file and `.env`, and back up the database a
 
 - **From Enterprise:** Keep the existing `./pg_data` for Enterprise. On the same Docker host, stop the Enterprise stack before starting CE so the named containers are available. Start with the new `default.env` and clear any old `KONG_PG_HOST` from your shell and `.env` unless it points to a separate CE database. Start CE with a fresh database in `./kong_ce_data` and recreate or import configuration supported by CE, such as Services, Routes, and compatible plugins. Enterprise schemas cannot be downgraded in place to CE.
 - **From an older Community Edition:** Follow the upgrade steps for your current Kong version and PostgreSQL major version before reusing an existing database. Point `POSTGRES_DATA_DIR` at that directory once the schema is compatible with Kong 3.9.5, and set `POSTGRES_VERSION` to match the PostgreSQL data. For example, PostgreSQL 13 data requires a major upgrade before PostgreSQL 17 can use it. [Kong OSS upgrade guide](https://github.com/Kong/kong/blob/3.9.5/UPGRADE.md) · [PostgreSQL major upgrades](https://www.postgresql.org/docs/17/upgrading.html)
-
-If you previously used Konga, open Kong Manager OSS on port 8002 to manage CE.
 
 See the [Kong Admin API reference](https://developer.konghq.com/admin-api/) for endpoint documentation.

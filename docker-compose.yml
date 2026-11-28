@@ -63,3 +63,40 @@ services:
       interval: 5s
       timeout: 5s
       retries: 15
+
+  konga:
+    image: pantsel/konga:0.14.9
+    platform: linux/amd64
+    profiles: [konga]
+    depends_on:
+      kong:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        secret_file=/app/kongadata/.token-secret
+        if [ ! -s "$$secret_file" ]; then
+          umask 077
+          node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))' > "$$secret_file.tmp"
+          mv "$$secret_file.tmp" "$$secret_file"
+        fi
+        TOKEN_SECRET="$$(cat "$$secret_file")"
+        export TOKEN_SECRET
+        exec /app/start.sh
+    ports:
+      - "127.0.0.1:${KONGA_PORT:-1337}:1337"
+    volumes:
+      - konga_data:/app/kongadata
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:1337/"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  konga_data:
