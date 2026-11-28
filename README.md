@@ -11,7 +11,9 @@ cp default.env .env
 ./quick-start.sh
 ```
 
-Set a unique `POSTGRES_PASSWORD` in `.env` before starting a shared deployment. Compose waits for PostgreSQL, initializes the Kong schema, and starts the Gateway after the bootstrap job succeeds. To start in the background, run `docker compose up -d`.
+Set a unique `POSTGRES_PASSWORD` in `.env` before starting a shared deployment. The script starts Kong CE with Kong Manager and Konga in the background. It waits for PostgreSQL and the Kong schema bootstrap, then waits for Kong and Konga to become healthy and prints their status.
+
+To start both dashboards directly, run `docker compose --profile konga up -d --wait`. To start the default Compose services with Kong CE and Kong Manager, run `docker compose up -d --wait`.
 
 | Endpoint | Default address | Host port setting |
 | --- | --- | --- |
@@ -19,10 +21,11 @@ Set a unique `POSTGRES_PASSWORD` in `.env` before starting a shared deployment. 
 | Proxy HTTPS | `https://127.0.0.1` | `KONG_PROXY_HTTPS_PORT` |
 | Admin API | `http://127.0.0.1:8001` | `KONG_ADMIN_PORT` |
 | Kong Manager OSS | `http://127.0.0.1:8002` | `KONG_MANAGER_PORT` |
+| Konga | `http://127.0.0.1:1337` | `KONGA_PORT` |
 
 If port 8002 is in use, set `KONG_MANAGER_PORT=18002` in `.env` and open `http://127.0.0.1:18002`. If you also change `KONG_ADMIN_PORT`, the dashboard uses the updated Admin API port automatically.
 
-## Use the dashboard
+## Use Kong Manager
 
 1. Open [Kong Manager](http://127.0.0.1:8002) in your browser.
 2. Open **Gateway Services**, create a service named `example` with URL `https://example.com`, and save it.
@@ -40,15 +43,9 @@ ssh -N -L 8001:127.0.0.1:8001 -L 8002:127.0.0.1:8002 user@kong.example.com
 
 The proxy publishes ports 80 and 443 on the host. PostgreSQL stays inside the Compose network.
 
-If startup fails, check `docker compose ps -a` and `docker compose logs kong-database kong-bootstrap kong`.
+If quick start fails, check `docker compose --profile konga ps -a` and `docker compose --profile konga logs kong-database kong-bootstrap kong konga`.
 
-## Optional Konga dashboard
-
-Start the Konga profile alongside Kong Manager.
-
-```sh
-docker compose --profile konga up -d --wait
-```
+## Use Konga
 
 1. Open [Konga](http://127.0.0.1:1337), create the initial admin account, and sign in.
 2. Add a connection with type **Default**, name it `kong`, and use `http://kong:8001` as the **Kong Admin URL**.
@@ -62,8 +59,6 @@ ssh -N -L 1337:127.0.0.1:1337 user@kong.example.com
 
 The `konga_data` Docker volume keeps the Konga account, connections, and generated session signing secret between restarts. The image is published for Linux AMD64, so ARM hosts need AMD64 emulation. [Konga image tags](https://hub.docker.com/r/pantsel/konga/tags)
 
-Run `docker compose --profile konga down` to stop the stack including Konga, or `docker compose stop konga` to stop Konga alone.
-
 Konga is archived and documents compatibility with Kong 1.x. Keep this profile for local development and use Kong Manager for features that Konga cannot manage on Kong 3.9. [Konga compatibility](https://github.com/pantsel/konga#compatibility)
 
 ## Configuration and data
@@ -73,7 +68,7 @@ Konga is archived and documents compatibility with Kong 1.x. Keep this profile f
 - `POSTGRES_USER`, `POSTGRES_DB`, and `POSTGRES_PASSWORD` configure both PostgreSQL and Kong's connection. `KONG_PG_HOST` can override the default database host, `kong-database`.
 - Set `KONG_TRUSTED_IPS` to the IP addresses or CIDRs of trusted reverse proxies if Kong receives forwarded client IP headers.
 
-`docker compose down` stops the stack. The PostgreSQL files stay in the configured data directory.
+Run `docker compose --profile konga down` to stop the full quick-start stack. Run `docker compose down` if you started only the default Compose services. To stop only Konga, run `docker compose stop konga`. The PostgreSQL data directory and Konga volume persist.
 
 ## Move an existing installation
 
