@@ -1,4 +1,4 @@
-x-kong-image: &kong-image kong/kong-gateway:${KONG_VERSION:-3.16.0.3}
+x-kong-image: &kong-image kong:${KONG_CE_VERSION:-3.9.5}
 
 x-kong-database-env: &kong-database-env
   KONG_DATABASE: postgres
@@ -6,7 +6,6 @@ x-kong-database-env: &kong-database-env
   KONG_PG_DATABASE: ${POSTGRES_DB:-kong}
   KONG_PG_USER: ${POSTGRES_USER:-kong}
   KONG_PG_PASSWORD: ${POSTGRES_PASSWORD:-kong}
-  KONG_LICENSE_DATA:
 
 services:
   kong-database:
@@ -17,7 +16,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-kong}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kong}
     volumes:
-      - ./pg_data:/var/lib/postgresql/data
+      - "${POSTGRES_DATA_DIR:-./kong_ce_data}:/var/lib/postgresql/data"
     restart: always
     healthcheck:
       test: ["CMD-SHELL", 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
